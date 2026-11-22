@@ -44,7 +44,7 @@ async function render(message='') {
       const blocks = await api('/blocks');
       const block = blocks.find(b => b.id === state.block) || blocks[1] || blocks[0];
       const history = block ? await api(`/blocks/${block.id}/samples`) : [];
-      body = blockPage(blocks, block, history, editable);
+      body = blockPage(blocks, block, history, editable, supervisor);
     } else if (page === 'clusters') {
       const [runs, labels] = await Promise.all([api('/runs'),api('/labels')]);
       const id = runs.find(r => r.id === state.run)?.id || runs[0]?.id;
@@ -96,6 +96,10 @@ async function mutate(action, data, id) {
     case 'sample':
       await api('/samples', numeric(data,'block_id','temp_c','rh_pct'));
       return '读数已归档。可在群落页重新提交缺测窗口。';
+    case 'misrecord': {
+      const result = await api(`/samples/${Number(data.sample_id)}/misrecord`, {reason:data.reason});
+      return `已标记错录：撤回 ${result.recalled_runs.length} 个批次，${result.replan_rounds.length} 个轮次转待改排。`;
+    }
     case 'run': {
       const run = await api('/runs',data);
       state.run = run.id;

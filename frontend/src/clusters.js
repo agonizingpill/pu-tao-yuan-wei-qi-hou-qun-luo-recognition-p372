@@ -12,15 +12,19 @@ function bicScores(result) {
 
 export function clusterPage(runs, run, labels, canWrite, supervisor) {
   const result = run?.result;
-  const healthRows = run?.coverage.map(c => `<tr class="${c.deficient?'warn-row':''}"><td>${safe(c.code)}</td><td>${safe(c.sensor)}</td><td>${c.received} / ${c.expected}</td>
-    <td>${c.missing.map(m => `${safe(m.day.slice(5))} ${slots[m.slot]}`).join('、') || '齐全'}</td></tr>`);
+  const healthRows = run?.coverage.map(c => {
+    const struck = new Set((c.misrecorded || []).map(m => `${m.day} ${m.slot}`));
+    return `<tr class="${c.deficient?'warn-row':''}"><td>${safe(c.code)}</td><td>${safe(c.sensor)}</td><td>${c.received} / ${c.expected}</td>
+    <td>${c.missing.map(m => `${safe(m.day.slice(5))} ${slots[m.slot]}${struck.has(`${m.day} ${m.slot}`) ? '（错录）' : ''}`).join('、') || '齐全'}</td></tr>`;
+  });
   const review = run?.status === 'review';
   return `${title('微气候群落', '三个连续日期，每地块应有六笔昼夜采样。超过 25% 缺测时停止发布。')}
     <div class="spread ${review ? 'review-spread' : ''}">
       <section>
-        <div class="section-label"><h2>识别批次</h2>${run ? `<span class="tag ${review || run.status==='blocked' ? 'warning' : 'neutral'}">${runStates[run.status]}</span>` : ''}</div>
+        <div class="section-label"><h2>识别批次</h2>${run ? `<span class="tag ${review || run.status==='blocked' || run.status==='recalled' ? 'warning' : 'neutral'}">${runStates[run.status]}</span>` : ''}</div>
         ${runs.length ? `<div class="selector">${select('run','查看采样窗口',runs.map(r => [r.id,`${r.window_end} · ${runStates[r.status]} · #${r.id}`]), run?.id)}</div>` : notice('从有完整采样的窗口发起第一次识别。')}
         ${run?.error ? notice(run.error, 'caution') : ''}
+        ${run?.recall ? notice(`该批次因错录撤回：${run.recall.block} ${run.recall.day} ${slots[run.recall.slot]} 读数作废。${run.recall.reason}`, 'caution') : ''}
         ${run?.status === 'queued' ? notice('采样快照已冻结，正在等待后台识别。') : ''}
         ${review ? `<div class="review"><h3>这次标签变更影响已排轮次</h3><p>确认前继续沿用旧标签，受影响的轮次暂缓执行。确认后需按新标签改排。</p>
           ${table(['轮次','地块','排定时间','旧标签','候选标签'],run.affected.map(r => `<tr><td>${safe(r.code)}</td><td>${safe(r.block)}</td><td>${localTime(r.starts_at)}</td><td>${tag(r.basis_profile)}</td><td>${tag(r.proposed_profile)}</td></tr>`))}

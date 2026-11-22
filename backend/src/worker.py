@@ -16,6 +16,13 @@ def consume_one():
         if not run:
             return
         run_id = run['id']
+        struck = {row['sample_id'] for row in db.execute('SELECT sample_id FROM sample_misrecord').fetchall()}
+        skipped = []
+        if struck:
+            for entry in run['snapshot']:
+                kept = [reading for reading in entry['readings'] if reading['id'] not in struck]
+                skipped.extend(reading['id'] for reading in entry['readings'] if reading['id'] in struck)
+                entry['readings'] = kept
         try:
             result = fit_profiles(run['snapshot'])
         except Exception as exc:
@@ -25,6 +32,8 @@ def consume_one():
                        (reason, run_id))
             event(db, 'worker', 'fit_failed', run_id, digest=run['digest'], reason=reason)
             return
+        if skipped:
+            result['skipped_misrecorded'] = sorted(set(skipped))
         store_fit(db, run_id, result)
     # PostgreSQL remains authoritative if archiving fails after the transaction commits.
     try:

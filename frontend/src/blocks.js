@@ -1,7 +1,7 @@
 import {slots, profiles} from './domain.js';
-import {safe, num, notice, tag, title, field, table, select, button} from './ui.js';
+import {safe, num, notice, tag, title, field, table, select, button, paragraph} from './ui.js';
 
-export function blockPage(blocks, block, history, canWrite) {
+export function blockPage(blocks, block, history, canWrite, supervisor) {
   const geometry = blocks.map(b => `<button type="button" class="parcel ${safe(b.profile || 'neutral')} ${b.id === block?.id ? 'chosen' : ''}"
     data-block="${b.id}" aria-pressed="${b.id === block?.id}" style="--e:${b.east_m/10}%;--n:${b.north_m/10}%;--w:${b.width_m/10}%;--h:${b.height_m/10}%">${safe(b.code)}<small>${safe(b.name)}</small></button>`).join('');
   const rows = blocks.map(b => `<tr><td><button class="text-button" data-block="${b.id}">${safe(b.code)}</button></td><td>${safe(b.name)}</td><td>${safe(b.sensor)}</td><td>${tag(b.profile)}</td></tr>`);
@@ -23,8 +23,11 @@ export function blockPage(blocks, block, history, canWrite) {
           ${field('temp_c','温度 °C','type="number" min="-30" max="60" step="0.1"')}${field('rh_pct','相对湿度 %','type="number" min="0" max="100" step="0.1"')}</div>${button('归档读数')}
         </form></details>` : ''}
         <h3>近期气象采样</h3>
-        ${history.length ? table(['日期','班次','气温','湿度'], history.slice(0,12).map(r =>
-          `<tr title="${safe(r.source)}"><td>${safe(r.observed_day.slice(5))}</td><td>${slots[r.slot]}</td><td>${num(r.temp_c)} °</td><td>${num(r.rh_pct,0)}%</td></tr>`)) : notice('这个探头还没有采样记录。')}` : notice('从边界图选择地块以查看采样。')}
+        ${history.length ? table(['日期','班次','气温','湿度','状态'], history.slice(0,12).map(r =>
+          `<tr title="${safe(r.source)}${r.misrecorded_at ? ` · 错录：${safe(r.misrecord_reason)}` : ''}"><td>${safe(r.observed_day.slice(5))}</td><td>${slots[r.slot]}</td><td>${num(r.temp_c)} °</td><td>${num(r.rh_pct,0)}%</td><td>${r.misrecorded_at ? '<span class="tag warning">错录</span>' : '有效'}</td></tr>`)) : notice('这个探头还没有采样记录。')}
+        ${supervisor && history.some(r => !r.misrecorded_at) ? `<details class="form-fold"><summary>标记错录读数</summary><form data-action="misrecord">
+          ${select('sample_id','错录读数',history.filter(r => !r.misrecorded_at).slice(0,12).map(r => [r.id,`${r.observed_day.slice(5)} ${slots[r.slot]} · ${num(r.temp_c)} °C · ${num(r.rh_pct,0)} %`]))}
+          ${paragraph('reason','错录缘由','例：探头故障期间抄录邻畦读数，未现场核对。')}${button('标记错录并撤回相关批次','secondary')}</form></details>` : ''}` : notice('从边界图选择地块以查看采样。')}
       </section>
     </div>
     ${canWrite ? `<details class="form-fold bottom"><summary>登记新地块</summary><form data-action="block"><div class="fields wide">

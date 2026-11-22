@@ -9,7 +9,7 @@ from .db import event
 from .domain import Slot
 from .fieldbook import one
 
-RUN_FIELDS = 'id,window_end,status,digest,coverage,result,error,attempts,actor,created_at'
+RUN_FIELDS = 'id,window_end,status,digest,coverage,result,error,attempts,actor,created_at,recall'
 
 
 def run_detail(db, run_id):
@@ -22,19 +22,28 @@ def make_snapshot(db, end):
     start = end - timedelta(days=2)
     blocks = db.execute('SELECT id,code,sensor FROM vine_block ORDER BY code').fetchall()
     samples = db.execute('''
-        SELECT id,block_id,observed_day,slot,temp_c,rh_pct,source
-        FROM microclimate_sample WHERE observed_day BETWEEN %s AND %s ORDER BY observed_day,slot,id
+        SELECT s.id,s.block_id,s.observed_day,s.slot,s.temp_c,s.rh_pct,s.source,
+               m.sample_id IS NOT NULL AS misrecorded
+        FROM microclimate_sample s LEFT JOIN sample_misrecord m ON m.sample_id=s.id
+        WHERE s.observed_day BETWEEN %s AND %s ORDER BY s.observed_day,s.slot,s.id
     ''', (start, end)).fetchall()
     snapshot, coverage = [], []
     expected = {(start + timedelta(days=i), slot.value) for i in range(3) for slot in Slot}
     for block in blocks:
-        readings = [row for row in samples if row['block_id'] == block['id']]
+        rows = [row for row in samples if row['block_id'] == block['id']]
+        readings = [row for row in rows if not row['misrecorded']]
+        struck = [row for row in rows if row['misrecorded']]
         missing = sorted(expected - {(row['observed_day'], row['slot']) for row in readings})
         snapshot.append(dict(block_id=block['id'], code=block['code'], sensor=block['sensor'],
-                             readings=[dict(row, observed_day=row['observed_day'].isoformat()) for row in readings]))
+                             readings=[dict(id=row['id'], block_id=row['block_id'],
+                                            observed_day=row['observed_day'].isoformat(), slot=row['slot'],
+                                            temp_c=row['temp_c'], rh_pct=row['rh_pct'], source=row['source'])
+                                       for row in readings]))
         coverage.append(dict(code=block['code'], block_id=block['id'], sensor=block['sensor'],
                              received=len(readings), expected=len(expected),
                              missing=[{'day': day.isoformat(), 'slot': slot} for day, slot in missing],
+                             misrecorded=[{'day': row['observed_day'].isoformat(), 'slot': row['slot']}
+                                          for row in struck],
                              deficient=len(missing) >= 2))
     return snapshot, coverage
 

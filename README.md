@@ -59,14 +59,18 @@ Docker 服务为 `frontend`、`backend`、`worker`、`db`、`redis`。数据库�
 
 标签候选只在变更影响已排轮次时进入主管台。确认与标记待改排在同一事务提交。凉湿、温和、暖干对应预设的 20、35、50 分钟。改排保留最初版本引用，审计附前后版本、时段与时长。录入采收观察要求轮次已完灌、时间相符且每轮仅一笔。三类标签和滴灌时长是基于合成观测的演示规则。传感器和执行设备通过人员录入与登记协作。
 
+主管可将单笔记采样标为错录。用过该读数的识别批次（含待拟合、待签）在同一事务撤回，其标签一并撤回；各地块回到最近的可信标签，无可信标签的地块停排。已完灌轮次与采收观察照旧，尚未完灌且引用撤回标签的轮次转待改排。错录标记每笔读数仅记录一次，重试失败批次不新增撤回记录，后续快照与拟合均跳过错录读数。排灌页展示撤回缘由与改排依据。
+
 ## 代码职责
 
 | 路径 | 说明 |
 |---|---|
 | `backend/migrations/001_field_ledger.sql` | 领域表、外键、版本和活动状态约束 |
+| `backend/migrations/002_misrecord_recall.sql` | 错录记录表、批次与标签的撤回状态 |
 | `backend/src/schemas.py`、`backend/src/domain.py` | API 输入与领域枚举 |
 | `backend/src/app.py`、`backend/src/auth.py`、`backend/src/db.py` | 路由、权限、中间件、连接和审计 |
 | `backend/src/fieldbook.py`、`clusters.py`、`irrigation.py` | 地块采样、标签发布及滴灌与采收事务 |
+| `backend/src/recall.py` | 错录标记、批次撤回、标签回退与轮次改排事务 |
 | `backend/src/mixture.py`、`backend/src/worker.py` | GaussianMixture 拟合、Redis 通知、数据库恢复与文件证据 |
 | `backend/scripts/seed_demo.py` | 幂等初始化演示数据 |
 | `frontend/src/api.js`、`main.js`、`ui.js` | 原生 ES modules 的 API、会话与页面状态、共享组件 |

@@ -7,12 +7,14 @@ from .domain import MINUTES, Profile, RoundState
 from .fieldbook import one
 
 ROUND_VIEW = '''
-    SELECT r.*,b.code AS block_code,b.name AS block_name,l.profile,l.revision,
+    SELECT r.*,b.code AS block_code,b.name AS block_name,l.profile,l.revision,l.state AS label_state,
            a.profile AS active_profile, a.revision AS active_revision,
            p.profile AS proposed_profile, p.run_id AS pending_run_id,
+           lr.recall AS label_recall,
            coalesce(p.profile<>l.profile AND r.state='scheduled', false) AS review_hold
     FROM irrigation_round r JOIN vine_block b ON r.block_id=b.id
     JOIN climate_label l ON r.label_id=l.id
+    JOIN climate_run lr ON lr.id=l.run_id
     LEFT JOIN climate_label a ON a.block_id=b.id AND a.state='active'
     LEFT JOIN climate_label p ON p.block_id=b.id AND p.state='proposed'
 '''
@@ -28,13 +30,16 @@ def existing_round(db, round_id):
 
 def scheduling_basis(db, block_id):
     block = one(db, '''
-        SELECT b.code,l.id AS label_id,l.profile,p.profile AS proposed_profile
+        SELECT b.code,l.id AS label_id,l.profile,p.profile AS proposed_profile,
+               EXISTS(SELECT 1 FROM climate_label x WHERE x.block_id=b.id AND x.state='recalled') AS recalled
         FROM vine_block b LEFT JOIN climate_label l ON b.id=l.block_id AND l.state='active'
         LEFT JOIN climate_label p ON p.block_id=b.id AND p.state='proposed' WHERE b.id=%s
     ''', (block_id,), '地块')
     if block['proposed_profile'] and block['proposed_profile'] != block['profile']:
         raise HTTPException(409, '新标签需要主管确认，暂缓编排该地块')
     if not block['label_id']:
+        if block['recalled']:
+            raise HTTPException(409, '生效标签已因错录撤回且无可信标签可回退，该地块停排，请补录读数后重新识别')
         raise HTTPException(409, '请先为该地块生成生效群落标签')
     return block
 

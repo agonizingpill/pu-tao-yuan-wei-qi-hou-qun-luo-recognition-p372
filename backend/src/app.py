@@ -11,7 +11,7 @@ from redis.exceptions import RedisError
 
 from backend.scripts.seed_demo import seed
 from .operations_evidence import router as operations_evidence
-from . import clusters, fieldbook, irrigation, schemas
+from . import clusters, fieldbook, irrigation, recall, schemas
 from .auth import check_password, identity, issue, require
 from .db import EVIDENCE_DIR, QUEUE, connect, lock_ledger, migrate, redis_client
 from .domain import Role
@@ -57,7 +57,8 @@ async def time_request(request: Request, call_next):
 async def duplicate(_request, exc):
     messages = {'vine_block_code_key': '地块编号已登记', 'vine_block_sensor_key': '探头已绑定另一地块',
                 'microclimate_sample_block_id_observed_day_slot_key': '该地块的班次采样已封存',
-                'irrigation_round_code_key': '灌溉轮次编号已使用', 'harvest_note_round_id_key': '该轮次已有采收观察'}
+                'irrigation_round_code_key': '灌溉轮次编号已使用', 'harvest_note_round_id_key': '该轮次已有采收观察',
+                'sample_misrecord_pkey': '该读数已标记错录'}
     return JSONResponse(status_code=409, content={'detail': messages.get(exc.diag.constraint_name, '记录已存在')})
 
 
@@ -107,6 +108,13 @@ def add_sample(data: schemas.SampleInput, user=editable):
     with connect() as db:
         lock_ledger(db)
         return fieldbook.record_sample(db, data.model_dump(), user['name'])
+
+
+@app.post('/samples/{sample_id}/misrecord')
+def misrecord(sample_id: int, data: schemas.ReasonInput, user=supervised):
+    with connect() as db:
+        lock_ledger(db)
+        return recall.misrecord(db, sample_id, data.reason, user['name'])
 
 
 @app.get('/labels')

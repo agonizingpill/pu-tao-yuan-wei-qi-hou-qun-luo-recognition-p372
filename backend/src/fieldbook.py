@@ -52,6 +52,8 @@ def record_sample(db, data, actor):
 def sample_list(db, block_id):
     one(db, 'SELECT id FROM vine_block WHERE id=%s', (block_id,), '地块')
     return db.execute('''
-        SELECT * FROM microclimate_sample WHERE block_id=%s
-        ORDER BY observed_day DESC, slot LIMIT 120
+        SELECT s.*,m.reason AS misrecord_reason,m.actor AS misrecord_actor,m.recorded_at AS misrecorded_at
+        FROM microclimate_sample s LEFT JOIN sample_misrecord m ON m.sample_id=s.id
+        WHERE s.block_id=%s
+        ORDER BY s.observed_day DESC, s.slot LIMIT 120
     ''', (block_id,)).fetchall()

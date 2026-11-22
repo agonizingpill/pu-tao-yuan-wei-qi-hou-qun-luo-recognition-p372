@@ -1,19 +1,31 @@
-import {roundStates} from './domain.js';
+import {profiles, roundStates} from './domain.js';
 import {safe, localTime, notice, tag, title, field, table, select, button, paragraph, num} from './ui.js';
+
+function recallNote(round) {
+  if (round.label_state !== 'recalled') return '';
+  const reason = `排程依据标签 v${round.revision} 已因错录撤回：${round.label_recall?.reason || '未记录缘由'}`;
+  if (round.state === 'completed') return notice(`${reason}。本轮次已完灌，灌溉与采收记录照旧。`);
+  if (round.state === 'cancelled') return notice(`${reason}。本轮次已取消，不再改排。`);
+  const basis = round.active_profile
+    ? `改排依据：回到 ${profiles[round.active_profile]} v${round.active_revision}。`
+    : '无可信标签可回退，该地块停排，待补录读数后重新识别。';
+  return notice(`${reason}。${basis}`, 'caution');
+}
 
 export function irrigationPage(blocks, rounds, selected, canWrite, supervisor) {
   const viable = blocks.filter(b => b.profile);
   const shown = selected || rounds[0];
   const rows = rounds.map(r => `<tr class="${r.review_hold || r.state==='needs_replan' ? 'warn-row' : ''}">
     <td>${localTime(r.starts_at)}</td><td><button class="text-button" data-round="${r.id}">${safe(r.code)}</button></td>
-    <td>${safe(r.block_code)} ${safe(r.block_name)}</td><td>${r.minutes} 分钟</td><td>${r.review_hold ? '待标签确认' : roundStates[r.state]}</td></tr>`);
+    <td>${safe(r.block_code)} ${safe(r.block_name)}</td><td>${r.minutes} 分钟</td><td>${r.review_hold ? '待标签确认' : roundStates[r.state]}${r.label_state==='recalled' ? ' · 依据已撤回' : ''}</td></tr>`);
   return `${title('灌溉轮次', '按地块生效标签编排滴灌时段。所有时间均为中国标准时间。')}
     <div class="spread"><section><div class="section-label"><h2>滴灌排程</h2><span>按开始时间</span></div>
     ${rows.length ? table(['开始','轮次','地块','时长','状态'],rows) : notice('还没有排灌轮次。从右侧选择带生效标签的地块编排。')}
     ${shown ? `<article class="round-sheet"><span class="ref">${safe(shown.code)} · ${safe(shown.block_code)}</span><h3>${safe(shown.block_name)}</h3>
-    <p>排程依据 ${tag(shown.profile)} v${shown.revision} · ${shown.minutes} 分钟 ${shown.state==='needs_replan' ? `→ 生效标签 ${tag(shown.active_profile)} v${shown.active_revision}` : ''}</p>
+    <p>排程依据 ${tag(shown.profile)} v${shown.revision} · ${shown.minutes} 分钟 ${shown.state==='needs_replan' ? (shown.active_profile ? `→ 生效标签 ${tag(shown.active_profile)} v${shown.active_revision}` : '→ 无生效标签，停排待识别') : ''}</p>
+    ${recallNote(shown)}
     ${shown.review_hold ? notice(`候选群落变更暂缓了本轮次。请在群落页处理 #${shown.pending_run_id}。`,'caution') : ''}
-    ${canWrite && shown.state === 'needs_replan' ? `<form data-action="replan" data-id="${shown.id}">
+    ${canWrite && shown.state === 'needs_replan' && shown.active_profile ? `<form data-action="replan" data-id="${shown.id}">
       ${field('starts_at','改排开始时间','type="datetime-local" value="2026-11-21T08:20"')}${paragraph('reason','改排记录','写明新窗口依据')}${button('按新标签保存改排')}</form>` : ''}
     ${canWrite && shown.state === 'scheduled' && !shown.review_hold ? `<form data-action="complete" data-id="${shown.id}" class="inline-form">
       ${field('completed_at','实际完灌时间','type="datetime-local" value="2026-11-21T09:15"')}${button('登记完灌')}</form>` : ''}
